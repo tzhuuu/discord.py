@@ -40,7 +40,6 @@ DEALINGS IN THE SOFTWARE.
 """
 
 import asyncio
-import functools
 import logging
 import socket
 import struct
@@ -500,4 +499,4 @@ class VoiceClient:
         if not self._connected.is_set():
             return False
 
-        await self.voice_processor.start(self.secret_key, self.mode, event_loop, voice_stream_factory)
+        await self.voice_processor.start(self.socket, self.secret_key, self.mode, event_loop, voice_stream_factory)

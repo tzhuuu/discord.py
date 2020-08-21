@@ -25,16 +25,16 @@ DEALINGS IN THE SOFTWARE.
 """
 
 import asyncio
-from collections import namedtuple, deque
 import concurrent.futures
 import json
 import logging
 import struct
 import sys
-import time
 import threading
+import time
 import traceback
 import zlib
+from collections import namedtuple, deque
 
 import aiohttp
 from bidict import bidict
@@ -54,18 +54,23 @@ __all__ = (
     'ReconnectWebSocket',
 )
 
+
 class ReconnectWebSocket(Exception):
     """Signals to safely reconnect the websocket."""
+
     def __init__(self, shard_id, *, resume=True):
         self.shard_id = shard_id
         self.resume = resume
         self.op = 'RESUME' if resume else 'IDENTIFY'
 
+
 class WebSocketClosure(Exception):
     """An exception to make up for the fact that aiohttp doesn't signal closure."""
     pass
 
+
 EventListener = namedtuple('EventListener', 'predicate event result future')
+
 
 class KeepAliveHandler(threading.Thread):
     def __init__(self, *args, **kwargs):
@@ -121,7 +126,8 @@ class KeepAliveHandler(threading.Thread):
                             msg = self.block_msg
                         else:
                             stack = traceback.format_stack(frame)
-                            msg = '%s\nLoop thread traceback (most recent call last):\n%s' % (self.block_msg, ''.join(stack))
+                            msg = '%s\nLoop thread traceback (most recent call last):\n%s' % (
+                            self.block_msg, ''.join(stack))
                         log.warning(msg, self.shard_id, total)
 
             except Exception:
@@ -145,6 +151,7 @@ class KeepAliveHandler(threading.Thread):
         if self.latency > 10:
             log.warning(self.behind_msg, self.shard_id, self.latency)
 
+
 class VoiceKeepAliveHandler(KeepAliveHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -165,9 +172,11 @@ class VoiceKeepAliveHandler(KeepAliveHandler):
         self.latency = ack_time - self._last_send
         self.recent_ack_latencies.append(self.latency)
 
+
 class DiscordClientWebSocketResponse(aiohttp.ClientWebSocketResponse):
     async def close(self, *, code: int = 4000, message: bytes = b'') -> bool:
         return await super().close(code=code, message=message)
+
 
 class DiscordWebSocket:
     """Implements a WebSocket for Discord's gateway v6.
@@ -209,19 +218,19 @@ class DiscordWebSocket:
         The authentication token for discord.
     """
 
-    DISPATCH           = 0
-    HEARTBEAT          = 1
-    IDENTIFY           = 2
-    PRESENCE           = 3
-    VOICE_STATE        = 4
-    VOICE_PING         = 5
-    RESUME             = 6
-    RECONNECT          = 7
-    REQUEST_MEMBERS    = 8
+    DISPATCH = 0
+    HEARTBEAT = 1
+    IDENTIFY = 2
+    PRESENCE = 3
+    VOICE_STATE = 4
+    VOICE_PING = 5
+    RESUME = 6
+    RECONNECT = 7
+    REQUEST_MEMBERS = 8
     INVALIDATE_SESSION = 9
-    HELLO              = 10
-    HEARTBEAT_ACK      = 11
-    GUILD_SYNC         = 12
+    HELLO = 10
+    HEARTBEAT_ACK = 11
+    GUILD_SYNC = 12
 
     def __init__(self, socket, *, loop):
         self.socket = socket
@@ -247,7 +256,8 @@ class DiscordWebSocket:
         return not self.socket.closed
 
     @classmethod
-    async def from_client(cls, client, *, initial=False, gateway=None, shard_id=None, session=None, sequence=None, resume=False):
+    async def from_client(cls, client, *, initial=False, gateway=None, shard_id=None, session=None, sequence=None,
+                          resume=False):
         """Creates a main websocket for Discord from a :class:`Client`.
 
         This is for internal use only.
@@ -586,7 +596,6 @@ class DiscordWebSocket:
         if query is not None:
             payload['d']['query'] = query
 
-
         await self.send_as_json(payload)
 
     async def voice_state(self, guild_id, channel_id, self_mute=False, self_deaf=False):
@@ -610,6 +619,7 @@ class DiscordWebSocket:
 
         self._close_code = code
         await self.socket.close(code=code)
+
 
 class DiscordVoiceWebSocket:
     """Implements the websocket protocol for handling voice connections.
@@ -642,18 +652,18 @@ class DiscordVoiceWebSocket:
         Receive only.  Indicates a user has disconnected from voice.
     """
 
-    IDENTIFY            = 0
-    SELECT_PROTOCOL     = 1
-    READY               = 2
-    HEARTBEAT           = 3
+    IDENTIFY = 0
+    SELECT_PROTOCOL = 1
+    READY = 2
+    HEARTBEAT = 3
     SESSION_DESCRIPTION = 4
-    SPEAKING            = 5
-    HEARTBEAT_ACK       = 6
-    RESUME              = 7
-    HELLO               = 8
-    INVALIDATE_SESSION  = 9
-    CLIENT_CONNECT      = 12
-    CLIENT_DISCONNECT   = 13
+    SPEAKING = 5
+    HEARTBEAT_ACK = 6
+    RESUME = 7
+    HELLO = 8
+    INVALIDATE_SESSION = 9
+    CLIENT_CONNECT = 12
+    CLIENT_DISCONNECT = 13
 
     def __init__(self, socket, loop):
         self.ws = socket
@@ -766,19 +776,19 @@ class DiscordVoiceWebSocket:
             self._keep_alive.start()
         elif op == self.SPEAKING:
             if self._connection.voice_processor is not None:
-                user_id = data.get('user_id')
-                ssrc = data.get('ssrc')
+                user_id = int(data.get('user_id'))
+                ssrc = int(data.get('ssrc'))
                 is_speaking = data.get('speaking') == 1
                 if is_speaking:
                     self._connection.voice_processor.add_user_ssrc(user_id=user_id, ssrc=ssrc)
                 else:
                     self._connection.voice_processor.remove_user_ssrc(ssrc=ssrc)
         elif op == self.CLIENT_CONNECT:
-            user_id = data.get('user_id')
-            ssrc = data.get('audio_ssrc')
+            user_id = int(data.get('user_id'))
+            ssrc = int(data.get('audio_ssrc'))
             self._connection.voice_processor.add_user_ssrc(user_id=user_id, ssrc=ssrc)
         elif op == self.CLIENT_DISCONNECT:
-            user_id = data.get('user_id')
+            user_id = int(data.get('user_id'))
             self._connection.voice_processor.remove_user_ssrc(user_id=user_id)
 
     async def initial_connection(self, data):

@@ -1,5 +1,5 @@
 class VoiceStreamFactory:
-    def create_voice_stream(self):
+    def create_voice_stream(self, user_id: int):
         pass
 
 

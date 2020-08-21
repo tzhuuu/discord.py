@@ -22,16 +22,16 @@ log = logging.getLogger(__name__)
 class VoiceProcessor:
     def __init__(self):
         self.user_ssrc_map: bidict[int, int] = bidict()
-        self.ssrc_channel_map: Dict[int, int] = {}  # ssrc -> SsrcChannel
+        self.ssrc_channel_map: Dict[int, VoiceChannel] = {}
         self.voice_stream_factory: Optional[VoiceStreamFactory] = None
 
     def add_user_ssrc(self, user_id, ssrc):
         self.user_ssrc_map[ssrc] = user_id
-        if ssrc in self.ssrc_channel_map[ssrc]:
+        if ssrc in self.ssrc_channel_map:
             channel = self.ssrc_channel_map[ssrc]
             channel.set_user(user_id)
         else:
-            channel = VoiceChannel(ssrc)
+            channel = VoiceChannel(ssrc, self.voice_stream_factory)
             channel.set_user(user_id)
             self.ssrc_channel_map[ssrc] = channel
 
@@ -49,6 +49,8 @@ class VoiceProcessor:
 
     async def start(self, socket, secret_key, mode, event_loop, voice_stream_factory):
         self.voice_stream_factory = voice_stream_factory
+        for channel in self.ssrc_channel_map.values():
+            channel.set_voice_stream_factory(voice_stream_factory)
         func = functools.partial(VoiceClientProtocol, secret_key, mode, self._handle_voice_packet)
         await event_loop.create_datagram_endpoint(func, sock=socket)
 
@@ -122,3 +124,12 @@ class VoiceClientProtocol(asyncio.DatagramTransport):
                       timestamp=timestamp,
                       ssrc=ssrc,
                       data=decrypted_data)
+
+    def connection_made(self, _):
+        pass
+
+    def connection_lost(self, _):
+        pass
+
+    def error_received(self, err):
+        log.error('Error in VoiceClientProtocol %s', err)
