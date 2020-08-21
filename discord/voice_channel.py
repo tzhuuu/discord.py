@@ -1,6 +1,6 @@
 from typing import Optional, List
 
-from .utils.sliding_window import SlidingWindow
+from .sliding_window import SlidingWindow
 from .voice_stream import VoiceStream, VoiceStreamFactory
 
 
