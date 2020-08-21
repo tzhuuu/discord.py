@@ -18,12 +18,12 @@ class VoiceChannel:
 
         self._buffered_data: List[any] = []
 
-        self._sliding_window = SlidingWindow(1024, 2147483647, self._invoke_voice_stream)
+        self._sliding_window = SlidingWindow(32, 2147483647, self._invoke_voice_stream)
 
     def __del__(self):
-        pass
+        self._sliding_window.flush()
 
-    def _invoke_voice_stream(self, data):
+    def _invoke_voice_stream(self, data: any):
         if self.voice_stream is not None:
             self.voice_stream.on_data(data)
 
@@ -66,6 +66,7 @@ class VoiceChannel:
         if len(data) >= 3 and data[-3:] == VoiceChannel.SILENCE_BYTES:
             self._silence_counter += 1
             if self._silence_counter >= VoiceChannel.MIN_SILENT_FRAMES:
+                self._sliding_window.flush()
                 self._silence_counter = 0
                 self.voice_stream.on_end()
                 self.voice_stream = None
