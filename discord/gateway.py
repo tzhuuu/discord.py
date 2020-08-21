@@ -37,6 +37,7 @@ import traceback
 import zlib
 
 import aiohttp
+from bidict import bidict
 
 from . import utils
 from .activity import BaseActivity
@@ -626,7 +627,7 @@ class DiscordVoiceWebSocket:
     SESSION_DESCRIPTION
         Receive only. Gives you the secret key required for voice.
     SPEAKING
-        Send only. Notifies the client if you are currently speaking.
+        Send and receive. Constructs the user to ssrc map.
     HEARTBEAT_ACK
         Receive only. Tells you your heartbeat has been acknowledged.
     RESUME
@@ -763,12 +764,29 @@ class DiscordVoiceWebSocket:
             interval = data['heartbeat_interval'] / 1000.0
             self._keep_alive = VoiceKeepAliveHandler(ws=self, interval=min(interval, 5.0))
             self._keep_alive.start()
+        elif op == self.SPEAKING:
+            if self._connection.voice_processor is not None:
+                user_id = data.get('user_id')
+                ssrc = data.get('ssrc')
+                is_speaking = data.get('speaking') == 1
+                if is_speaking:
+                    self._connection.voice_processor.add_user_ssrc(user_id=user_id, ssrc=ssrc)
+                else:
+                    self._connection.voice_processor.remove_user_ssrc(ssrc=ssrc)
+        elif op == self.CLIENT_CONNECT:
+            user_id = data.get('user_id')
+            ssrc = data.get('audio_ssrc')
+            self._connection.voice_processor.add_user_ssrc(user_id=user_id, ssrc=ssrc)
+        elif op == self.CLIENT_DISCONNECT:
+            user_id = data.get('user_id')
+            self._connection.voice_processor.remove_user_ssrc(user_id=user_id)
 
     async def initial_connection(self, data):
         state = self._connection
         state.ssrc = data['ssrc']
         state.voice_port = data['port']
         state.endpoint_ip = data['ip']
+        state.audio_ssrc_map = bidict()
 
         packet = bytearray(70)
         struct.pack_into('>I', packet, 0, state.ssrc)

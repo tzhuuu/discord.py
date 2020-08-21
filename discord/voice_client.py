@@ -40,24 +40,28 @@ DEALINGS IN THE SOFTWARE.
 """
 
 import asyncio
-import socket
+import functools
 import logging
+import socket
 import struct
 import threading
 
 from . import opus
 from .backoff import ExponentialBackoff
-from .gateway import *
 from .errors import ClientException, ConnectionClosed
+from .gateway import *
 from .player import AudioPlayer, AudioSource
+from .voice_processor import VoiceProcessor
 
 try:
     import nacl.secret
+
     has_nacl = True
 except ImportError:
     has_nacl = False
 
 log = logging.getLogger(__name__)
+
 
 class VoiceClient:
     """Represents a Discord voice connection.
@@ -85,6 +89,7 @@ class VoiceClient:
     loop: :class:`asyncio.AbstractEventLoop`
         The event loop that the voice client is running on.
     """
+
     def __init__(self, state, timeout, channel):
         if not has_nacl:
             raise RuntimeError("PyNaCl library needed in order to use voice")
@@ -111,6 +116,8 @@ class VoiceClient:
         self._player = None
         self.encoder = None
         self._lite_nonce = 0
+
+        self.voice_processor = VoiceProcessor()
 
     warn_nacl = not has_nacl
     supported_modes = (
@@ -487,3 +494,10 @@ class VoiceClient:
             log.warning('A packet has been dropped (seq: %s, timestamp: %s)', self.sequence, self.timestamp)
 
         self.checked_add('timestamp', opus.Encoder.SAMPLES_PER_FRAME, 4294967295)
+
+    async def enable_voice_events(self, event_loop, voice_stream_factory):
+        log.info('enabling voice packet events')
+        if not self._connected.is_set():
+            return False
+
+        await self.voice_processor.start(self.secret_key, self.mode, event_loop, voice_stream_factory)
