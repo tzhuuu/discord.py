@@ -10,7 +10,7 @@ idna==2.10
 iniconfig==1.0.1
 more-itertools==8.4.0
 multidict==4.7.6
-git+https://github.com/tzhuuu/opuslib.git@934a1c3875afee73421ca23da823662a816cd237#egg=opuslib
+-e git+https://github.com/tzhuuu/opuslib.git@934a1c3875afee73421ca23da823662a816cd237#egg=opuslib
 packaging==20.4
 pluggy==0.13.1
 py==1.9.0
