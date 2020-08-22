@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from .opus import Decoder
 from .sliding_window import SlidingWindow
@@ -26,11 +26,12 @@ class VoiceChannel:
     def __del__(self):
         self._sliding_window.flush()
 
-    def _invoke_voice_stream(self, data: Optional[bytes]):
+    def _invoke_voice_stream(self, data: Tuple[int, Optional[bytes]]):
         if self.voice_stream is not None:
             # Decode the opus audio data
-            pcm_audio = self._decoder.decode(data)
-            self.voice_stream.on_data(pcm_audio)
+            timestamp, opus_audio = data
+            pcm_audio = self._decoder.decode(opus_audio)
+            self.voice_stream.on_data((timestamp, pcm_audio))
 
     def set_user(self, user_id: int):
         self.user_id = user_id
@@ -54,22 +55,22 @@ class VoiceChannel:
                 self.voice_stream.on_data(data)
             self._buffered_data.clear()
 
-    def on_data(self, data: bytes, sequence: int, timestamp: int):
+    def on_data(self, opus_audio_data: bytes, sequence: int, timestamp: int):
         if self.voice_stream is None:
             if self.user_id is None or self.voice_stream_factory is None:
-                self._buffered_data.append(data)
+                self._buffered_data.append(opus_audio_data)
                 return
 
-            if len(data) >= 3 and data[-3:] == VoiceChannel.SILENCE_BYTES:
+            if len(opus_audio_data) >= 3 and opus_audio_data[-3:] == VoiceChannel.SILENCE_BYTES:
                 return
 
             self._create_voice_stream()
             self.voice_stream.on_start()
 
-        self._sliding_window.add_data(sequence, (timestamp, data))
+        self._sliding_window.add_data(sequence, (timestamp, opus_audio_data))
 
         # Check for explicit silence frames
-        if len(data) >= 3 and data[-3:] == VoiceChannel.SILENCE_BYTES:
+        if len(opus_audio_data) >= 3 and opus_audio_data[-3:] == VoiceChannel.SILENCE_BYTES:
             self._silence_counter += 1
             if self._silence_counter >= VoiceChannel.MIN_SILENT_FRAMES:
                 self._sliding_window.flush()
