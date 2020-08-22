@@ -1,5 +1,6 @@
 from typing import Optional, List
 
+from .opus import Decoder
 from .sliding_window import SlidingWindow
 from .voice_stream import VoiceStream, VoiceStreamFactory
 
@@ -20,12 +21,16 @@ class VoiceChannel:
 
         self._sliding_window = SlidingWindow(32, 2147483647, self._invoke_voice_stream)
 
+        self._decoder = Decoder()
+
     def __del__(self):
         self._sliding_window.flush()
 
-    def _invoke_voice_stream(self, data: any):
+    def _invoke_voice_stream(self, data: Optional[bytes]):
         if self.voice_stream is not None:
-            self.voice_stream.on_data(data)
+            # Decode the opus audio data
+            pcm_audio = self._decoder.decode(data)
+            self.voice_stream.on_data(pcm_audio)
 
     def set_user(self, user_id: int):
         self.user_id = user_id
@@ -37,6 +42,7 @@ class VoiceChannel:
 
     def _create_voice_stream(self):
         assert self.voice_stream is None
+        self._decoder.reset()
         self.voice_stream = self.voice_stream_factory.create_voice_stream(self.user_id)
 
     def maybe_init_voice_stream(self):

@@ -60,6 +60,7 @@ class VoiceProcessor:
                              sequence: int,
                              timestamp: int,
                              ssrc: int,
+                             header_extension: bytes,
                              data: bytes):
 
         # Check if we have a voice channel already
@@ -77,6 +78,7 @@ class VoiceProcessor:
 
 class VoiceClientProtocol(asyncio.DatagramTransport):
     VOICE_PROTOCOL_VERSION = 0x90
+    RTP_EXTENSION_HEADER_LENGTH = 8  # Two words
 
     def __init__(self, secret_key, mode: str, callback):
         super().__init__()
@@ -118,12 +120,16 @@ class VoiceClientProtocol(asyncio.DatagramTransport):
         header, decrypted_data = decrypt_packet(encrypted_data)
         version, payload_type, sequence, timestamp, ssrc = header
 
+        header_extension = decrypted_data[:VoiceClientProtocol.RTP_EXTENSION_HEADER_LENGTH]
+        opus_encoded_audio_data = decrypted_data[VoiceClientProtocol.RTP_EXTENSION_HEADER_LENGTH:]
+
         self.callback(version=version,
                       payload_type=payload_type,
                       sequence=sequence,
                       timestamp=timestamp,
                       ssrc=ssrc,
-                      data=decrypted_data)
+                      header_extension=header_extension,
+                      data=opus_encoded_audio_data)
 
     def connection_made(self, _):
         pass
