@@ -71,7 +71,7 @@ class VoiceProcessor:
 
         # On data
         channel = self.ssrc_channel_map[ssrc]
-        channel.on_data(data=data,
+        channel.on_data(opus_audio_data=data,
                         sequence=sequence,
                         timestamp=timestamp)
 
