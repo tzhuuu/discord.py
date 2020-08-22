@@ -1,9 +1,16 @@
-from setuptools import setup
 import re
 
+from setuptools import setup
+
 requirements = []
+dependency_links = []
 with open('requirements.txt') as f:
-  requirements = f.read().splitlines()
+    temp_requirements = f.read().splitlines()
+    for l in requirements:
+        if l.startswith('-e ') or l.startswith('https://github.com'):
+            dependency_links.append(l)
+        else:
+            requirements.append(l)
 
 version = ''
 with open('discord/__init__.py') as f:
@@ -16,6 +23,7 @@ if version.endswith(('a', 'b', 'rc')):
     # append version identifier based on commit count
     try:
         import subprocess
+
         p = subprocess.Popen(['git', 'rev-list', '--count', 'HEAD'],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = p.communicate()
@@ -46,8 +54,8 @@ setup(name='discord.py',
       author='Rapptz',
       url='https://github.com/Rapptz/discord.py',
       project_urls={
-        "Documentation": "https://discordpy.readthedocs.io/en/latest/",
-        "Issue tracker": "https://github.com/Rapptz/discord.py/issues",
+          "Documentation": "https://discordpy.readthedocs.io/en/latest/",
+          "Issue tracker": "https://github.com/Rapptz/discord.py/issues",
       },
       version=version,
       packages=['discord', 'discord.ext.commands', 'discord.ext.tasks'],
@@ -57,21 +65,22 @@ setup(name='discord.py',
       long_description_content_type="text/x-rst",
       include_package_data=True,
       install_requires=requirements,
+      dependency_links=dependency_links,
       extras_require=extras_require,
       python_requires='>=3.5.3',
       classifiers=[
-        'Development Status :: 5 - Production/Stable',
-        'License :: OSI Approved :: MIT License',
-        'Intended Audience :: Developers',
-        'Natural Language :: English',
-        'Operating System :: OS Independent',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8',
-        'Topic :: Internet',
-        'Topic :: Software Development :: Libraries',
-        'Topic :: Software Development :: Libraries :: Python Modules',
-        'Topic :: Utilities',
+          'Development Status :: 5 - Production/Stable',
+          'License :: OSI Approved :: MIT License',
+          'Intended Audience :: Developers',
+          'Natural Language :: English',
+          'Operating System :: OS Independent',
+          'Programming Language :: Python :: 3.5',
+          'Programming Language :: Python :: 3.6',
+          'Programming Language :: Python :: 3.7',
+          'Programming Language :: Python :: 3.8',
+          'Topic :: Internet',
+          'Topic :: Software Development :: Libraries',
+          'Topic :: Software Development :: Libraries :: Python Modules',
+          'Topic :: Utilities',
       ]
-)
+      )
