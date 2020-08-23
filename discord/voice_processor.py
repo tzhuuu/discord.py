@@ -19,11 +19,34 @@ except ImportError:
 log = logging.getLogger(__name__)
 
 
+class VoiceProcessorParams:
+    def __init__(self,
+                 *,
+                 socket,
+                 secret_key,
+                 mode,
+                 event_loop,
+                 voice_stream_factory):
+        self.socket = socket
+        self.secret_key = secret_key
+        self.mode = mode
+        self.event_loop = event_loop
+        self.voice_stream_factory = voice_stream_factory
+
+
 class VoiceProcessor:
     def __init__(self):
         self.user_ssrc_map: bidict[int, int] = bidict()
         self.ssrc_channel_map: Dict[int, VoiceChannel] = {}
-        self.voice_stream_factory: Optional[VoiceStreamFactory] = None
+        self.params: Optional[VoiceProcessorParams] = VoiceProcessorParams(socket=None,
+                                                                           secret_key=None,
+                                                                           mode=None,
+                                                                           event_loop=None,
+                                                                           voice_stream_factory=None)
+        self.datagram_transport = None
+        self.should_reconnect = False
+        self.socket = None
+        self.event_loop = None
 
     def add_user_ssrc(self, user_id, ssrc):
         self.user_ssrc_map[ssrc] = user_id
@@ -31,7 +54,7 @@ class VoiceProcessor:
             channel = self.ssrc_channel_map[ssrc]
             channel.set_user(user_id)
         else:
-            channel = VoiceChannel(ssrc, self.voice_stream_factory)
+            channel = VoiceChannel(ssrc, self.params.voice_stream_factory)
             channel.set_user(user_id)
             self.ssrc_channel_map[ssrc] = channel
 
@@ -48,11 +71,40 @@ class VoiceProcessor:
             return
 
     async def start(self, socket, secret_key, mode, event_loop, voice_stream_factory):
-        self.voice_stream_factory = voice_stream_factory
+        self.params = VoiceProcessorParams(socket=socket,
+                                           secret_key=secret_key,
+                                           mode=mode,
+                                           event_loop=event_loop,
+                                           voice_stream_factory=voice_stream_factory)
+        self.socket = socket
+        self.should_reconnect = True
+        self.event_loop = event_loop
         for channel in self.ssrc_channel_map.values():
-            channel.set_voice_stream_factory(voice_stream_factory)
-        func = functools.partial(VoiceClientProtocol, secret_key, mode, self._handle_voice_packet)
-        await event_loop.create_datagram_endpoint(func, sock=socket)
+            channel.set_voice_stream_factory(self.params.voice_stream_factory)
+        await self._create_datagram_endpoint()
+
+    async def stop(self):
+        # if self.datagram_transport is not None:
+        #     self.datagram_transport.close()
+        self.should_reconnect = False
+
+    async def _create_datagram_endpoint(self):
+        func = functools.partial(VoiceClientProtocol,
+                                 self.params.secret_key,
+                                 self.params.mode,
+                                 self._handle_voice_packet,
+                                 self._handle_connection_made,
+                                 self._handle_connection_lost,
+                                 self._handle_error_received)
+        await self.event_loop.create_datagram_endpoint(func, sock=self.socket)
+
+    async def _reconnect(self):
+        if self.socket is None:
+            log.info('Failed to reconnect because socket is None')
+            return
+
+        log.info('Reconnecting the voice udp socket')
+        await self._create_datagram_endpoint()
 
     def _handle_voice_packet(self,
                              version: int,
@@ -65,8 +117,8 @@ class VoiceProcessor:
 
         # Check if we have a voice channel already
         if ssrc not in self.ssrc_channel_map:
-            assert self.voice_stream_factory is not None
-            channel = VoiceChannel(ssrc, self.voice_stream_factory)
+            assert self.params.voice_stream_factory is not None
+            channel = VoiceChannel(ssrc, self.params.voice_stream_factory)
             self.ssrc_channel_map[ssrc] = channel
 
         # On data
@@ -75,16 +127,39 @@ class VoiceProcessor:
                         sequence=sequence,
                         timestamp=timestamp)
 
+    def _handle_connection_made(self, transport):
+        log.info('Connection made %s', transport)
+        self.datagram_transport = transport
+
+    def _handle_connection_lost(self, err):
+        log.info('Voice udp connection lost: %s', err)
+        if self.should_reconnect:
+            self._reconnect()
+
+    def _handle_error_received(self, err):
+        log.info('Voice udp connection error: %s', err)
+        if self.should_reconnect:
+            self._reconnect()
+
 
 class VoiceClientProtocol(asyncio.DatagramTransport):
     VOICE_PROTOCOL_VERSION = 0x90
     RTP_EXTENSION_HEADER_LENGTH = 8  # Two words
 
-    def __init__(self, secret_key, mode: str, callback):
+    def __init__(self,
+                 secret_key,
+                 mode: str,
+                 data_callback,
+                 connection_made_cb,
+                 connection_lost_cb,
+                 error_received_cb):
         super().__init__()
         self.box = nacl.secret.SecretBox(bytes(secret_key))
         self.mode = mode
-        self.callback = callback
+        self.callback = data_callback
+        self.connection_made_cb = connection_made_cb
+        self.connection_lost_cb = connection_lost_cb
+        self.error_received_cb = error_received_cb
 
     def _unpack_header(self, data):
         version, payload_type, sequence, timestamp, ssrc = struct.unpack_from('>ccHII', data)
@@ -131,11 +206,11 @@ class VoiceClientProtocol(asyncio.DatagramTransport):
                       header_extension=header_extension,
                       data=opus_encoded_audio_data)
 
-    def connection_made(self, _):
-        pass
+    def connection_made(self, transport):
+        self.connection_made_cb(transport)
 
-    def connection_lost(self, _):
-        pass
+    def connection_lost(self, err):
+        self.connection_lost_cb(err)
 
     def error_received(self, err):
-        log.error('Error in VoiceClientProtocol %s', err)
+        self.error_received_cb(err)

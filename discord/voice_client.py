@@ -319,6 +319,7 @@ class VoiceClient:
             await self.terminate_handshake(remove=True)
         finally:
             if self.socket:
+                await self.disable_voice_events()
                 self.socket.close()
 
     async def move_to(self, channel):
@@ -500,3 +501,9 @@ class VoiceClient:
             return False
 
         await self.voice_processor.start(self.socket, self.secret_key, self.mode, event_loop, voice_stream_factory)
+
+    async def disable_voice_events(self, event_loop=None):
+        if event_loop is None:
+            event_loop = asyncio.get_event_loop()
+        log.info('disabling voice event packets')
+        await self.voice_processor.stop()
